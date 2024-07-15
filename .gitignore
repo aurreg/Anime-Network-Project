@@ -1,2 +1,4 @@
 # .gitignore
 .env
+animelist.csv
+rating_complete.csv
