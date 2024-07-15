@@ -85,7 +85,26 @@ for (i in 1:length(threshold)) {
 }
 
 # Plot skewness vs threshold
-plot(threshold, s, xlim = c(0, 100), ylab = 'skewness')
+plot(threshold, s, 
+     xlim = c(0, 100), 
+     ylim = range(s, na.rm = TRUE),
+     type = 'b',                   # Connect points with lines
+     pch = 19,                     # Point character
+     col = 'blue',                 # Point color
+     xlab = 'Threshold',           # X-axis label
+     ylab = 'Skewness',            # Y-axis label
+     main = 'Skewness vs Threshold',  # Title
+     cex.main = 1.5,               # Title size
+     cex.lab = 1.2,                # Axis label size
+     cex.axis = 1.1,               # Axis tick label size
+     cex = 0.5)                    # Point size
+
+# Adding grid lines
+grid(nx = NULL, ny = NULL, col = 'gray', lty = 'dotted')
+
+# Adding a horizontal line at y=0 for reference
+abline(v = 20, col = 'red', lty = 2)
+
 
 # Filter bigrams with frequency >= 20
 bigrams <- bigrams %>% filter(n >= 20) %>% as.data.frame()
