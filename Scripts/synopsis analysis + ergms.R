@@ -17,8 +17,7 @@ anime_with_synopsis <- read_csv("anime_with_synopsis.csv")
 
 # Display structure of 'anime_with_synopsis' dataframe
 str(anime_with_synopsis)
-# Display 'sypnopsis' column of 'anime_with_synopsis' dataframe
-anime_with_synopsis$sypnopsis
+
 
 # Filter 'anime_with_synopsis' dataframe
 anime_with_synopsis <- anime_with_synopsis %>%
@@ -54,8 +53,12 @@ synopsis <- synopsis %>%
 # Extract tokens
 tokens <- synopsis$word
 
-# Create bigrams from tokens
-bigrams <- sapply(1:(length(tokens) - 1), function(i) paste(tokens[i], tokens[i + 1]))
+# Create bigrams from tokens and avoid multiple edges
+bigrams <- sapply(1:(length(tokens) - 1), function(i) {
+  words <- sort(c(tokens[i], tokens[i + 1]))
+  paste(words, collapse = " ")
+})
+
 
 # Convert bigrams to a vector
 bigrams <- as.vector(bigrams)
@@ -68,6 +71,7 @@ bigrams <- bigrams %>%
   filter(!str_detect(bigrams, "^\\||\\|$")) %>%
   filter(!str_detect(bigrams, "\\bsource\\b")) %>%
   as.data.frame()
+
 
 # Count bigram frequencies
 bigrams <- bigrams %>% count(bigrams, sort = TRUE)
@@ -99,6 +103,8 @@ plot(threshold, s,
      cex.axis = 1.1,               # Axis tick label size
      cex = 0.5)                    # Point size
 
+
+#curve(45 / sqrt(x), from = 0.1, to = 100, add = TRUE, col = 'red', lwd = 2)
 # Adding grid lines
 grid(nx = NULL, ny = NULL, col = 'gray', lty = 'dotted')
 
@@ -125,9 +131,18 @@ bigrams2 <- as.data.frame(bigrams2)
 head(bigrams, 6)
 head(bigrams2)
 
+sum(bigrams2$word_1==bigrams2$word_2)
+
+bigrams2<-bigrams2 %>%
+  filter(word_1 != word_2)%>%
+  as.data.frame()
+
+
+sum(bigrams2$word_1==bigrams2$word_2)
+
+
 # Create graph from bigrams
 g <- bigrams2 %>%
-  filter(word_1 != word_2) %>%
   graph_from_data_frame(directed = FALSE)
 
 # Find the largest connected component
@@ -138,38 +153,71 @@ vert_ids <- V(g)[components$membership == biggest_cluster_id]
 # Create subgraph of the largest component
 g2 <- igraph::induced_subgraph(g, vert_ids)
 
-# Apply different community detection algorithms
-kc_leading_eigen <- cluster_leading_eigen(g2)
-kc_walktrap <- cluster_walktrap(g2)
-kc_louvain <- cluster_louvain(g2)
-kc_label_prop <- cluster_label_prop(g2)
-kc_spinglass <- cluster_spinglass(g2)
-kc_infomap <- cluster_infomap(g2)
+set.seed(42)
 
-# Calculate modularity for each algorithm
-modularity(kc_leading_eigen)
-modularity(kc_walktrap)
-modularity(kc_louvain)
-modularity(kc_label_prop)
-modularity(kc_spinglass)
-modularity(kc_infomap)
+# Applying different community detection algorithms on graph g2
+kc_edge_betweenness <- cluster_edge_betweenness(g2)
+kc_fast_greedy <- cluster_fast_greedy(g2)
+kc_infomap <- cluster_infomap(g2)
+kc_label_prop <- cluster_label_prop(g2)
+kc_leading_eigen <- cluster_leading_eigen(g2)
+kc_leiden <- cluster_leiden(g2)
+kc_louvain <- cluster_louvain(g2)
+kc_spinglass <- cluster_spinglass(g2)
+kc_walktrap <- cluster_walktrap(g2)
+
+# Calculating modularity for each community detection method
+mod_edge_betweenness <- modularity(kc_edge_betweenness)
+mod_fast_greedy <- modularity(kc_fast_greedy)
+mod_infomap <- modularity(kc_infomap)
+mod_label_prop <- modularity(kc_label_prop)
+mod_leading_eigen <- modularity(kc_leading_eigen)
+mod_leiden <- modularity(g2, kc_leiden$membership)
+mod_louvain <- modularity(kc_louvain)
+mod_spinglass <- modularity(kc_spinglass)
+mod_walktrap <- modularity(kc_walktrap)
+
+# Creating a named vector of modularity values
+modularity_values <- c(
+  Edge_Betweenness = mod_edge_betweenness,
+  Fast_Greedy = mod_fast_greedy,
+  Infomap = mod_infomap,
+  Label_Propagation = mod_label_prop,
+  Leading_Eigen = mod_leading_eigen,
+  Leiden = mod_leiden,
+  Louvain = mod_louvain,
+  Spinglass = mod_spinglass,
+  Walktrap = mod_walktrap
+)
+
+# Finding the method with the highest modularity
+best_method <- names(which.max(modularity_values))
+best_modularity <- max(modularity_values)
+
+# Printing the method with the highest modularity
+cat("Based on the modularity values, the method with the highest modularity is", best_method, "\n")
+cat("Modularity value:", best_modularity, "\n")
 
 # Display unique memberships of Louvain algorithm
-unique(kc_louvain$membership)
+unique(kc_spinglass$membership)
 
 # Summarize the graph
 summary(g2)
 
 # Extract word and cluster information
 word <- V(g2)$name
-cluster <- kc_louvain$membership
+cluster <- kc_spinglass$membership
 
 # Create dataframe for clusters
 cluster <- cbind(word, cluster)
 cluster <- as.data.frame(cluster)
 
-# Split clusters into list
-cluster_list <- split(cluster$word, cluster$cluster)
+
+
+# Exporting for analysis with Python and GPT
+write.csv(cluster, "clusters.csv", row.names = FALSE)
+write.csv(bigrams2, "bigrams.csv", row.names = FALSE)
+
 
 # Initialize an empty dataframe to store results
 finall_synopsis <- data.frame()
@@ -195,31 +243,32 @@ head(finall_synopsis)
 # Group by token and id, then summarize the counts
 finall_synopsis <- finall_synopsis %>%
   group_by(token, id) %>%
-  summarise(count = n()) %>%
-  as.data.frame()
+  summarise(count = n()) %>%  # Count occurrences of each token in each id
+  as.data.frame()  
 
 # Display structure of the final synopsis and cluster dataframes
 str(finall_synopsis)
 str(cluster)
 
-# Merge the final synopsis with cluster data
+# Merge the final synopsis with cluster data based on token-word match
 finall_synopsis <- finall_synopsis %>%
   left_join(cluster, by = c('token' = 'word')) %>%
-  filter(!(is.na(cluster))) %>%
-  as.data.frame()
+  filter(!(is.na(cluster))) %>%  # Remove tokens that do not have a matching cluster
+  as.data.frame()  # Convert the result to a data frame
 
-# Summarize frequencies by id and cluster
+# Summarize frequencies of tokens by id and cluster
 frequency_synopsis <- finall_synopsis %>%
   group_by(id, cluster) %>%
-  summarise(frequency = sum(count)) %>%
-  as.data.frame()
+  summarise(frequency = sum(count)) %>%  # Calculate the total frequency of tokens per id and cluster
+  as.data.frame()  
 
 library(dplyr)
 library(tidyr)
 
-# Reshape the dataframe to wide format
+# Reshape the dataframe to add the frequency of each cluster to each anime
 frequency_synopsis <- frequency_synopsis %>%
   pivot_wider(names_from = cluster, values_from = frequency, values_fill = 0)
+
 
 # Generate indices from 1 to the number of rows in the dataframe
 index = seq_len(nrow(anime_with_synopsis))
@@ -227,13 +276,14 @@ index = seq_len(nrow(anime_with_synopsis))
 # Add index to the dataframe and merge with frequency synopsis
 anime_with_synopsis <- cbind(index, anime_with_synopsis)
 anime_with_synopsis <- as.data.frame(anime_with_synopsis)
+
 anime_with_synopsis <- anime_with_synopsis %>%
 left_join(frequency_synopsis, by = c('index' = 'id'))
 
+
+
 #### bipartite network ###########################
 
-# Read data from CSV file
-animelist <- read_csv("animelist.csv")
 
 # Assign 'anime_with_synopsis' to 'anime'
 anime <- anime_with_synopsis
@@ -274,7 +324,9 @@ for (i in 1:nrow(anime)) {
 anime2 <- cbind(anime, genre_matrix)
 
 # Extract anime IDs
-id <- muestras$muestras
+muestras <- read_csv("muestras.txt")
+id<-muestras$muestras
+
 
 # Filter 'animelist' dataframe by selected anime IDs
 animelist <- animelist %>%
@@ -332,6 +384,7 @@ A <- as.matrix(A)
 
 # Display top rows of adjacency matrix
 head(A)
+
 
 # Initialize new dataframe
 N_A <- NULL
@@ -433,6 +486,10 @@ V(g)$cluster_11 <- replace_na_with_zero(anime_generes$`11`)
 V(g)$cluster_12 <- replace_na_with_zero(anime_generes$`12`)
 V(g)$cluster_13 <- replace_na_with_zero(anime_generes$`13`)
 V(g)$cluster_14 <- replace_na_with_zero(anime_generes$`14`)
+V(g)$cluster_15 <- replace_na_with_zero(anime_generes$`15`)
+V(g)$cluster_16 <- replace_na_with_zero(anime_generes$`16`)
+V(g)$cluster_17 <- replace_na_with_zero(anime_generes$`17`)
+V(g)$cluster_18 <- replace_na_with_zero(anime_generes$`18`)
 
 # Identify the largest connected component
 components <- igraph::clusters(g, mode = "weak")
@@ -461,7 +518,8 @@ g_network <- asNetwork(g2)
 ergm_model <- formula(g_network ~ edges + nodecov(~cbind(
   cluster_1, cluster_2, cluster_3, cluster_4, cluster_5, 
   cluster_6, cluster_7, cluster_8, cluster_9, cluster_10, 
-  cluster_11, cluster_12, cluster_13, cluster_14
+  cluster_11, cluster_12, cluster_13, cluster_14+ cluster_15+
+    cluster_16+cluster_17+cluster_18
 )))
 
 # Set seed for reproducibility
@@ -477,7 +535,14 @@ summary(ergm_fit)
 set.seed(42)
 
 # Conduct goodness-of-fit analysis
-ergm_gof <- gof(object = ergm_fit)
+ergm_gof <- gof(
+  object = ergm_fit,
+  control = control.gof.ergm(
+    nsim = 500,
+    parallel = 10,
+    seed = 42  
+  )
+)
 
 # Display p-values for the goodness-of-fit test
 ergm_gof$pval.model
