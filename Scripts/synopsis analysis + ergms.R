@@ -518,8 +518,8 @@ g_network <- asNetwork(g2)
 ergm_model <- formula(g_network ~ edges + nodecov(~cbind(
   cluster_1, cluster_2, cluster_3, cluster_4, cluster_5, 
   cluster_6, cluster_7, cluster_8, cluster_9, cluster_10, 
-  cluster_11, cluster_12, cluster_13, cluster_14+ cluster_15+
-    cluster_16+cluster_17+cluster_18
+  cluster_11, cluster_12, cluster_13, cluster_14, cluster_15,
+    cluster_16,cluster_17,cluster_18
 )))
 
 # Set seed for reproducibility
@@ -548,25 +548,12 @@ ergm_gof <- gof(
 ergm_gof$pval.model
 
 # Summarize p-values for degree distribution
-summary(ergm_gof$pval.deg)
+quantile(ergm_gof$pval.deg[,5], probs = seq(0, 1,  0.2))
 
 # Summarize p-values for edgewise shared partner distribution
-summary(ergm_gof$pval.espart)
+quantile(ergm_gof$pval.espart[,5], probs = seq(0, 1,  0.2))
+
+
 
 # Summarize p-values for minimum geodesic distance distribution
-summary(ergm_gof$pval.dist)
-
-# Conduct a linear regression analysis on the 'Score' variable using attributes
-reg <- lm(
-  as.numeric(Score) ~  + `1` + `2` + `3` + 
-    `4` + `5` + `6` + `7` + `8` + 
-    `9` + `10` + `11` + `12` + `13` + 
-    `14`, 
-  data = anime
-)
-
-# Display summary of the linear regression model
-summary(reg)
-
-# Plot diagnostic plots for the linear regression model
-plot(reg)
+quantile(ergm_gof$pval.dist[,5], probs=seq(0, 1,  0.2))
