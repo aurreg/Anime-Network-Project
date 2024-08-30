@@ -14,3 +14,8 @@ results/: Analysis results, including visualizations and graph models.
 Requirements
 Python 3.8 or higher
 Libraries: pandas, numpy, nltk, scikit-learn, networkx, matplotlib
+
+## Licencia
+
+Este proyecto está licenciado bajo la Licencia MIT. Para más detalles, consulta el archivo [LICENSE](LICENSE).
+
