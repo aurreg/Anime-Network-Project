@@ -4,10 +4,12 @@ library(stringr)
 library(tidytext)
 library(writexl)
 library(igraph)
-
+library(network)
+library(intergraph)
+library(ergm)
+library(wordcloud)
 # Set working directory
-setwd("C:/Users/Pc/Desktop/Redes/Data")
-
+setwd("C:/Users/Pc/Desktop/Anime-Network-Project/Data")
 # Read data from CSV files
 animelist <- read_csv("animelist.csv")
 anime <- read_csv("anime.csv")
@@ -46,9 +48,27 @@ synopsis <- tibble(line = 1:length(synopsis), text = synopsis)
 synopsis <- synopsis %>%
   unnest_tokens(input = text, output = word, token = "regex", pattern = "\\s+")
 
+
 # Join with stop words and remove them
 synopsis <- synopsis %>%
   anti_join(x = ., y = stop_words)
+
+# Join with stop words and remove them
+synopsis2 <- synopsis %>%
+  filter(!str_detect(word, "\\bsource\\b")) %>%
+  filter(!str_detect(word, "^\\||\\|$")) %>%
+  anti_join(x = ., y = stop_words)
+
+
+synopsis2  %>% 
+  count(word, sort = TRUE) %>%
+  head(n = 10)
+
+set.seed(123)
+synopsis2 %>%
+  count(word, sort = TRUE) %>%
+  with(wordcloud(words = word, freq = n, max.words =300, colors = 'purple2'))
+
 
 # Extract tokens
 tokens <- synopsis$word
@@ -72,20 +92,31 @@ bigrams <- bigrams %>%
   filter(!str_detect(bigrams, "\\bsource\\b")) %>%
   as.data.frame()
 
+bigrams<-bigrams$bigrams
 
-# Count bigram frequencies
-bigrams <- bigrams %>% count(bigrams, sort = TRUE)
+bigrams<- str_split_fixed(bigrams, " ", 2)
 
-# Display the top bigrams
-head(bigrams)
+word_1 <- bigrams[, 1]
+word_2 <- bigrams[, 2]
+
+bigrams2 <- cbind(word_1, word_2)
+bigrams2 <- as.data.frame(bigrams2)
+
+bigrams2<-bigrams2%>%
+  filter(!word_1 %in% stop_words$word & !word_2 %in% stop_words$word)%>%
+  filter(word_1 != word_2)%>%
+  count(word_1, word_2, sort = TRUE) %>%
+  rename(weight = n)
 
 # Calculate skewness for different thresholds
-threshold <- unique(bigrams$n)
-count <- bigrams$n
+threshold <- unique(bigrams2$weight)
+count <- bigrams2$weight
 library(EnvStats)
 s <- NULL
 for (i in 1:length(threshold)) { 
-  s[i] <- skewness(bigrams[count > threshold[i], ]$n)
+  s[i] <- skewness(bigrams2[count > threshold[i], ]$weight)
+  #hist(bigrams[count > threshold[i], ]$n)
+  
 }
 
 # Plot skewness vs threshold
@@ -97,7 +128,7 @@ plot(threshold, s,
      col = 'blue',                 # Point color
      xlab = 'Threshold',           # X-axis label
      ylab = 'Skewness',            # Y-axis label
-     main = 'Skewness vs Threshold',  # Title
+     main = '',  # Title
      cex.main = 1.5,               # Title size
      cex.lab = 1.2,                # Axis label size
      cex.axis = 1.1,               # Axis tick label size
@@ -110,40 +141,16 @@ grid(nx = NULL, ny = NULL, col = 'gray', lty = 'dotted')
 
 # Adding a horizontal line at y=0 for reference
 abline(v = 20, col = 'red', lty = 2)
-
-
-# Filter bigrams with frequency >= 20
-bigrams <- bigrams %>% filter(n >= 20) %>% as.data.frame()
-
-# Split bigrams into two words
-split <- str_split_fixed(bigrams$bigrams, " ", 2)
-
-# Create new columns for the words
-word_1 <- split[, 1]
-word_2 <- split[, 2]
-w <- bigrams$n
-
-# Create dataframe for bigrams
-bigrams2 <- cbind(word_1, word_2, w)
-bigrams2 <- as.data.frame(bigrams2)
-
-# Display top bigrams
-head(bigrams, 6)
-head(bigrams2)
-
-sum(bigrams2$word_1==bigrams2$word_2)
-
-bigrams2<-bigrams2 %>%
-  filter(word_1 != word_2)%>%
-  as.data.frame()
-
-
-sum(bigrams2$word_1==bigrams2$word_2)
-
-
 # Create graph from bigrams
-g <- bigrams2 %>%
+
+head(bigrams2,10)
+
+g <- bigrams2%>%
+  filter(weight > 20) %>%
+  select(word_1,word_2)%>%
   graph_from_data_frame(directed = FALSE)
+
+g<-igraph::simplify(g) 
 
 # Find the largest connected component
 components <- igraph::clusters(g, mode = "weak")
@@ -152,6 +159,7 @@ vert_ids <- V(g)[components$membership == biggest_cluster_id]
 
 # Create subgraph of the largest component
 g2 <- igraph::induced_subgraph(g, vert_ids)
+
 
 set.seed(42)
 
@@ -197,19 +205,34 @@ best_modularity <- max(modularity_values)
 # Printing the method with the highest modularity
 cat("Based on the modularity values, the method with the highest modularity is", best_method, "\n")
 cat("Modularity value:", best_modularity, "\n")
-
+k<-kc_spinglass
 # Display unique memberships of Louvain algorithm
-unique(kc_spinglass$membership)
+max(k$membership)
+
+cols <- c(brewer.pal(9,"Set1")[1:9],brewer.pal(8,"Set2")[1:7],brewer.pal(8,"Set2")[1:7],brewer.pal(12,"Set3")[1:3])
+set.seed(123)
+plot(g2, layout = layout_nicely, vertex.color = adjustcolor(cols[k$membership], 0.6), 
+     vertex.frame.color =adjustcolor(cols[kc_spinglass$membership],1), vertex.size = 3,  
+     vertex.label = NA, edge.color=adjustcolor('gray',0.8),
+     vertex.label.color = 'black', vertex.label.cex = .7, vertex.label.dist = 1)
+
+eigen_centrality(g2)$vector
+
+tab <- cbind(c("Dist. media","Grado media","Grado desviación","Número clan","Densidad","Transitividad","Asortatividad"),
+             round(c(mean_distance(g2), mean(degree(g2)), sd(degree(g2)), clique.number(g2), edge_density(g2),
+                     transitivity(g2), assortativity_degree(g2)),4)
+)
+tab
 
 # Summarize the graph
 summary(g2)
 
 # Extract word and cluster information
 word <- V(g2)$name
-cluster <- kc_spinglass$membership
-
+cluster <- k$membership
+eigen_word<-eigen_centrality(g2)$vector
 # Create dataframe for clusters
-cluster <- cbind(word, cluster)
+cluster <- cbind(word, cluster,eigen_word)
 cluster <- as.data.frame(cluster)
 
 
@@ -278,7 +301,7 @@ anime_with_synopsis <- cbind(index, anime_with_synopsis)
 anime_with_synopsis <- as.data.frame(anime_with_synopsis)
 
 anime_with_synopsis <- anime_with_synopsis %>%
-left_join(frequency_synopsis, by = c('index' = 'id'))
+  left_join(frequency_synopsis, by = c('index' = 'id'))
 
 
 
@@ -332,7 +355,7 @@ id<-muestras$muestras
 animelist <- animelist %>%
   filter(anime_id %in% id) %>%
   as.data.frame()
-
+str(animelist)
 # Create new user IDs
 user_id <- unique(animelist$user_id)
 user_new_id <- seq(1, length(user_id))
@@ -464,7 +487,7 @@ V(g)$Josei <- anime_generes$Josei
 V(g)$Kids <- anime_generes$Kids
 V(g)$Shoujo_Ai <- anime_generes$`Shounen Ai`
 V(g)$Cars <- anime_generes$Cars
-
+V(g)$anime_name<-anime_generes$Name
 # Define a function to replace NA with 0
 replace_na_with_zero <- function(attribute) {
   attribute[is.na(attribute)] <- 0
@@ -504,10 +527,25 @@ g2 <- igraph::induced_subgraph(g, vert_ids)
 # Display summary of the subgraph
 summary(g2)
 summary(g)
+centralidad<-tibble(word = V(g2)$anime_name, eigen = eigen_centrality(g2, scale = T)$vector)
+centralidad %>%
+  arrange(desc(eigen)) %>%
+  head(n = 10)
 
-library(network)
-library(intergraph)
-library(ergm)
+tab <- cbind(c("Dist. media","Grado media","Grado desviación","Número clan","Densidad","Transitividad","Asortatividad"),
+             round(c(mean_distance(g2), mean(degree(g2)), sd(degree(g2)), clique.number(g2), edge_density(g2),
+                     transitivity(g2), assortativity_degree(g2)),4)
+)
+
+tab
+
+g3<-igraph::induced_subgraph(g,V(g2)$name[coreness(g2)<115])
+set.seed(123)
+plot(g3, vertex.color = adjustcolor('purple4', 0.4), 
+     vertex.frame.color =adjustcolor('purple4', 0.5), vertex.size = 3,  
+     vertex.label = NA, edge.color=adjustcolor('gray',0.8),
+     vertex.label.color = 'purple4', vertex.label.cex = .7, vertex.label.dist = 1)
+
 
 # Convert igraph object to network object
 g_network <- asNetwork(g2)
@@ -517,9 +555,9 @@ g_network <- asNetwork(g2)
 # Define ERGM model formula
 ergm_model <- formula(g_network ~ edges + nodecov(~cbind(
   cluster_1, cluster_2, cluster_3, cluster_4, cluster_5, 
-  cluster_6, cluster_7, cluster_8, cluster_9, cluster_10, 
-  cluster_11, cluster_12, cluster_13, cluster_14, cluster_15,
-    cluster_16,cluster_17,cluster_18
+  cluster_6, cluster_7, cluster_8, cluster_9, cluster_10,
+  cluster_11,cluster_12,cluster_13,cluster_14,cluster_15,
+  cluster_16,cluster_17,cluster_18
 )))
 
 # Set seed for reproducibility
@@ -536,12 +574,8 @@ set.seed(42)
 
 # Conduct goodness-of-fit analysis
 ergm_gof <- gof(
-  object = ergm_fit,
-  control = control.gof.ergm(
-    nsim = 500,
-    parallel = 10,
-    seed = 42  
-  )
+  object = ergm_fit
+  
 )
 
 # Display p-values for the goodness-of-fit test
@@ -557,3 +591,4 @@ quantile(ergm_gof$pval.espart[,5], probs = seq(0, 1,  0.2))
 
 # Summarize p-values for minimum geodesic distance distribution
 quantile(ergm_gof$pval.dist[,5], probs=seq(0, 1,  0.2))
+

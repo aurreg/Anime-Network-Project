@@ -3,7 +3,7 @@ library(dplyr)
 library(stringr)
 
 # Set working directory
-setwd("C:/Users/Pc/Desktop/Redes/Data")
+setwd("C:/Users/Pc/Desktop/Anime-Network-Project/Data")
 
 # Read data from CSV files
 animelist <- read_csv("animelist.csv")
@@ -132,14 +132,12 @@ sum(tamanos_poblacion)
 # Initialize a vector to store sampled data
 muestras <- vector()
 
-# Set random seed for reproducibility
-set.seed(123)
 
-# Display structure of the 'anime' dataframe
-str(anime)
 
 # Perform random sampling for each genre
 for (i in 1:(length(genres_list) - 1)) {
+  # Set random seed for reproducibility
+  set.seed(123)
   muestras <- c(muestras, sample(anime[anime[, genres_list[i]] == 1, 'MAL_ID'], size = tamanos_muestra[i], replace = FALSE))
 }
 
@@ -150,6 +148,7 @@ muestras <- as.data.frame(muestras)
 
 # Display the first few rows of the sampled data
 head(muestras)
+
 
 # Write the sampled data to a CSV file
 write.csv(muestras, 'muestras.txt')

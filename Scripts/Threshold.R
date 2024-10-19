@@ -229,6 +229,10 @@ ergm_gof<-gof(ergm_fit)
 absolute_error[i]<- mean(abs(0.5-ergm_gof$pval.model[,5]))
 
 }
-mean_absolute_error[i]<-mean(absolute_error)
+mean_absolute_error[j]<-mean(absolute_error)
 }
 mean_absolute_error
+thresholds
+plot(thresholds,mean_absolute_error,type='l')
+sort(mean_absolute_error)
+
