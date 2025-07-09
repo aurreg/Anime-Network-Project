@@ -253,7 +253,7 @@ for (j in 1:nrow(anime_with_synopsis)) {
   # Create a temporary dataframe with words and their identifiers
   temp_df <- data.frame(
     token = synopsis_split,
-    id = seq(j, length.out = length(synopsis_split))
+    id = rep(j, length(synopsis_split))
   )
   
   # Add the temporary dataframe to the final result
@@ -285,6 +285,7 @@ frequency_synopsis <- finall_synopsis %>%
   summarise(frequency = sum(count)) %>%  # Calculate the total frequency of tokens per id and cluster
   as.data.frame()  
 
+
 library(dplyr)
 library(tidyr)
 
@@ -304,7 +305,27 @@ anime_with_synopsis <- anime_with_synopsis %>%
   left_join(frequency_synopsis, by = c('index' = 'id'))
 
 
+# Step 1: Count non-zero values per column
+count <- anime_with_synopsis %>%
+  select(`1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`, `12`, `13`, `14`, `15`, `16`, `17`, `18`) %>%
+  summarise(across(everything(), ~sum(. != 0, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(), names_to = "Cluster", values_to = "Count") %>%
+  mutate(Cluster = factor(Cluster, levels = as.character(1:18)))%>%
+  as.data.frame()
 
+# Step 2: Plot
+ggplot(count, aes(x = Cluster, y = Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(
+    title = "",
+    x = "Cluster",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+no_cluster_count <-  16214- length(unique(anime_with_synopsis$index))
+
+no_cluster_count
 #### bipartite network ###########################
 
 
